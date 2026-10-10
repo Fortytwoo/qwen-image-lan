@@ -1,0 +1,39 @@
+name: Windows checks
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff # v6
+        with:
+          python-version: '3.12'
+      - name: Install test dependencies
+        shell: pwsh
+        run: |
+          uv venv .venv
+          uv pip install --python .venv/Scripts/python.exe -r service/requirements.txt
+      - name: Tests and publication scan
+        shell: pwsh
+        env:
+          PYTHONUTF8: '1'
+          PYTHONIOENCODING: utf-8
+        run: |
+          ./.venv/Scripts/python.exe -m unittest discover -s tests -v
+          if ($LASTEXITCODE -ne 0) { throw 'Tests failed' }
+          ./.venv/Scripts/python.exe scripts/check_public_tree.py --history
+          if ($LASTEXITCODE -ne 0) { throw 'Public tree check failed' }
+      - name: PowerShell syntax
+        shell: pwsh
+        run: |
+          foreach ($file in (Get-ChildItem scripts/*.ps1)) {
+            $tokens = $null; $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($file.FullName,[ref]$tokens,[ref]$errors) | Out-Null
+            if ($errors) { throw ($file.Name + ': ' + ($errors.Message -join '; ')) }
+          }
